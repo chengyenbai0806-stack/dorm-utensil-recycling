@@ -7,7 +7,7 @@ import { ArrowLeft, Clock, CheckCircle, Truck, User, Home, PackageCheck } from "
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
-// 強制此頁面為動態渲染，防止 Vercel 預渲染錯誤 (解決 image_92071a.png 的關鍵)
+// 強制此頁面為動態渲染
 export const dynamic = "force-dynamic";
 
 interface OrderItem {
@@ -38,6 +38,9 @@ function TrackingContent() {
   const [order, setOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // ✅ 固定網址設定：確保所有 QR Code 掃出來都一樣
+  const FIXED_QR_URL = "https://save-food-app-homework-train.vercel.app/";
+
   const loadOrder = useCallback(async () => {
     if (!orderId) return;
     const { data, error } = await supabase
@@ -55,36 +58,35 @@ function TrackingContent() {
   }, [orderId]);
 
   useEffect(() => {
-    // 確保只在瀏覽器端且 orderId 存在時執行
-    if (typeof window !== "undefined") {
-      if (!orderId) {
-        // 如果 URL 沒 ID，五秒後回首頁，避免開發時閃退
-        const timer = setTimeout(() => router.push("/customer"), 5000);
-        return () => clearTimeout(timer);
-      }
-      
-      loadOrder();
+    if (typeof window === "undefined" || !orderId) return;
 
-      const channel = supabase
-        .channel(`track-${orderId}`)
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
-          (payload) => {
-            setOrder(payload.new as Order);
-          }
-        )
-        .subscribe();
+    loadOrder();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [orderId, loadOrder, router]);
+    const channel = supabase
+      .channel(`track-${orderId}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'orders', 
+          filter: `id=eq.${orderId}` 
+        },
+        (payload) => {
+          setOrder(payload.new as Order);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId, loadOrder]);
 
   const handlePayDeposit = async () => {
-    if (!orderId) return;
+    if (!orderId || isProcessing) return;
     setIsProcessing(true);
+    
     const { error } = await supabase
       .from('orders')
       .update({
@@ -97,16 +99,16 @@ function TrackingContent() {
     if (error) {
       toast.error("支付失敗");
       setIsProcessing(false);
-      return;
-    } 
-    toast.success("押金支付成功，請取餐！");
-    await loadOrder(); 
-    setIsProcessing(false);
+    } else {
+      toast.success("押金支付成功，請取餐！");
+      setIsProcessing(false);
+    }
   };
 
   const handleReturnConfirm = async () => {
-    if (!orderId) return;
+    if (!orderId || isProcessing) return;
     setIsProcessing(true);
+
     const { error } = await supabase
       .from('orders')
       .update({ 
@@ -117,37 +119,23 @@ function TrackingContent() {
 
     if (!error) {
       toast.success("歸還成功");
-      await loadOrder();
     } else {
       toast.error("更新失敗");
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
-  if (!orderId) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black p-4 text-center">
-      未提供訂單編號，請重新從訂單列表進入。
-    </div>
-  );
-
-  if (!order) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
-      載入訂單資料中...
-    </div>
-  );
+  if (!orderId) return <div className="p-10 text-center">未提供訂單編號</div>;
+  if (!order) return <div className="p-10 text-center">載入中...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-black p-4 pb-10">
+    <div className="min-h-screen bg-slate-50 text-black p-4 pb-10 font-sans">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => router.push("/customer")}
-            className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={() => router.push("/customer")} className="p-2 bg-white rounded-full shadow-sm">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-xl font-bold">訂單詳細追蹤</h1>
+          <h1 className="text-xl font-bold text-gray-800">訂單追蹤</h1>
         </div>
 
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center mb-6">
@@ -156,94 +144,89 @@ function TrackingContent() {
             {order.status === "delivering" && <Truck className="w-16 h-16 text-blue-500 animate-bounce" />}
             {order.status === "in_locker" && <PackageCheck className="w-16 h-16 text-green-500" />}
             {order.status === "picked_up" && <User className="w-16 h-16 text-yellow-500" />}
-            {order.status === "returned" && <CheckCircle className="w-16 h-16 text-green-600 animate-in zoom-in" />}
+            {order.status === "returned" && <CheckCircle className="w-16 h-16 text-green-600" />}
           </div>
 
-          <h2 className="text-2xl font-bold mb-2">
-            {order.status === "pending" && "等待接單中"}
-            {order.status === "delivering" && "餐點配送中"}
-            {order.status === "in_locker" && `已送達 ${order.lockerNumber || ""} 號櫃`}
-            {order.status === "picked_up" && "享受美食中"}
-            {order.status === "returned" && "餐具歸還完成"}
+          <h2 className="text-2xl font-bold mb-2 text-gray-800">
+            {order.status === "pending" && "正在尋找外送員"}
+            {order.status === "delivering" && "外送員配送中"}
+            {order.status === "in_locker" && `請至 ${order.lockerNumber} 號櫃取餐`}
+            {order.status === "picked_up" && "餐點使用中"}
+            {order.status === "returned" && "歸還流程已完成"}
           </h2>
           
-          <p className="text-gray-500 text-sm mb-6">
-            訂單編號: {order.id.split("-")[0].toUpperCase()}
+          <p className="text-gray-400 text-[10px] mb-6 uppercase tracking-widest">
+            Order ID: {order.id.split("-")[0]}
           </p>
 
-          <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden mb-8">
-             <div 
-               className="h-full bg-blue-500 transition-all duration-500" 
-               style={{ width: 
-                 order.status === "pending" ? "20%" : 
-                 order.status === "delivering" ? "40%" : 
-                 order.status === "in_locker" ? "60%" : 
-                 order.status === "picked_up" ? "80%" : "100%" 
-               }} 
-             />
+          <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-8">
+            <div 
+              className="h-full bg-blue-500 transition-all duration-700" 
+              style={{ width: 
+                order.status === "pending" ? "10%" : 
+                order.status === "delivering" ? "40%" : 
+                order.status === "in_locker" ? "70%" : 
+                order.status === "picked_up" ? "90%" : "100%" 
+              }} 
+            />
           </div>
 
+          {/* 下方為 QR Code 顯示區塊 */}
           <div className="space-y-4">
+            
+            {/* ✅ 綠色階段：取餐 QR Code */}
             {order.status === "in_locker" && (
-              <div className="animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-gray-50 p-4 rounded-2xl mb-4 flex justify-center">
-                  <QRCodeSVG value={JSON.stringify({ id: order.id, action: 'pickup' })} size={180} />
+              <div className="animate-in fade-in zoom-in duration-500">
+                <div className="bg-gray-50 p-6 rounded-2xl mb-4 flex flex-col items-center border border-gray-100">
+                  <p className="text-sm text-gray-500 mb-3">請向管理員出示此碼取餐</p>
+                  <div className="bg-white p-3 rounded-xl shadow-md">
+                    <QRCodeSVG value={FIXED_QR_URL} size={160} />
+                  </div>
                 </div>
                 <button
                   onClick={handlePayDeposit}
                   disabled={isProcessing}
-                  className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold shadow-md hover:bg-green-700 transition-all disabled:bg-gray-300"
+                  className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold shadow-lg hover:bg-green-700 transition-all"
                 >
                   {isProcessing ? "處理中..." : "支付押金 NT$100 並取餐"}
                 </button>
               </div>
             )}
 
+            {/* ✅ 紫色階段：歸還 QR Code (現在也改為固定網址了) */}
             {order.status === "picked_up" && (
-              <div className="animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-purple-50 border-2 border-dashed border-purple-100 p-4 rounded-2xl mb-4 flex justify-center">
-                  <QRCodeSVG value={JSON.stringify({ id: order.id, action: 'return' })} size={180} />
+              <div className="animate-in fade-in zoom-in duration-500">
+                <div className="bg-purple-50 border-2 border-dashed border-purple-100 p-6 rounded-2xl mb-4 flex flex-col items-center">
+                  <p className="text-sm text-purple-600 font-medium mb-3">歸還時請出示此碼</p>
+                  <div className="bg-white p-3 rounded-xl shadow-md">
+                    <QRCodeSVG value={FIXED_QR_URL} size={160} />
+                  </div>
                 </div>
                 <button
                   onClick={handleReturnConfirm}
                   disabled={isProcessing}
-                  className="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold shadow-md hover:bg-purple-700 transition-all disabled:bg-gray-300"
+                  className="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold shadow-lg hover:bg-purple-700 transition-all"
                 >
-                  {isProcessing ? "處理中..." : "確認歸還 (退回押金)"}
+                  {isProcessing ? "處理中..." : "我已歸還餐具 (退回押金)"}
                 </button>
               </div>
             )}
 
+            {/* ✅ 完成階段 */}
             {order.status === "returned" && (
               <div className="animate-in fade-in zoom-in duration-500">
-                <p className="text-green-600 font-medium mb-4">感謝您支持環境永續，押金已退還！</p>
+                <div className="bg-green-50 p-6 rounded-2xl mb-6">
+                   <p className="text-green-700 font-bold mb-1">任務完成！</p>
+                   <p className="text-green-600 text-sm text-balance">感謝您支持循環餐具，押金已原路退回。</p>
+                </div>
                 <button
                   onClick={() => router.push("/customer")}
-                  className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold shadow-lg hover:bg-black flex items-center justify-center gap-2 transition-all"
+                  className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-all"
                 >
-                  <Home className="w-5 h-5" />
-                  返回主介面
+                  返回首頁
                 </button>
               </div>
             )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="font-bold mb-4 text-gray-800">訂單內容</h3>
-          <div className="space-y-3">
-            {order.items.map((item, idx) => (
-              <div key={idx} className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">{item.name}</span>
-                <span className="font-medium">x {item.count}</span>
-              </div>
-            ))}
-            <div className="pt-3 border-t border-gray-50 mt-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">配送位置</span>
-                <span className="text-gray-800 font-medium">{order.dorm} {order.room}</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -253,11 +236,7 @@ function TrackingContent() {
 
 export default function OrderTracking() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
-        正在啟動追蹤系統...
-      </div>
-    }>
+    <Suspense fallback={<div className="p-10 text-center">系統載入中...</div>}>
       <TrackingContent />
     </Suspense>
   );
