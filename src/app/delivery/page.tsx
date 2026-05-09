@@ -1,13 +1,15 @@
 "use client";
 
+export const dynamic = "force-dynamic"; // 關鍵修正：防止 Prerender Error
+
 import { supabase } from "@/lib/supabase";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // 確保是從 next/navigation 匯入
+import { useState, useEffect, Suspense } from "react"; // 加入 Suspense
+import { useRouter } from "next/navigation";
 import { Home, MapPin, Phone, Package, Check, QrCode } from "lucide-react";
 import { toast } from "sonner";
-import dynamic from 'next/dynamic';
+import dynamicLoader from 'next/dynamic'; // 更改名稱避免衝突
 
-const QRCodeSVG = dynamic(
+const QRCodeSVG = dynamicLoader(
   () => import('qrcode.react').then((mod) => mod.QRCodeSVG),
   { ssr: false }
 );
@@ -30,8 +32,9 @@ interface Order {
   lockerNumber?: number;
 }
 
-export default function DeliveryPage() {
-  const router = useRouter(); // 修正點 1：將 navigate 改為 router
+// 將主要內容包裹在一個組件中以符合 Suspense 要求
+function DeliveryContent() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveryName, setDeliveryName] = useState("");
   const [showNameInput, setShowNameInput] = useState(true);
@@ -51,7 +54,6 @@ export default function DeliveryPage() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
         (payload) => {
-          console.log('資料庫有變動:', payload);
           if (payload.eventType === 'INSERT') {
             toast.info(`新訂單來自 ${payload.new.studentName}！`);
           }
@@ -111,6 +113,7 @@ export default function DeliveryPage() {
       toast.error("接單失敗");
     } else {
       toast.success(`已接取訂單，分配櫃子：${lockerNumber}`);
+      fetchOrders(); // 接單後立即更新清單
     }
   };
 
@@ -127,6 +130,7 @@ export default function DeliveryPage() {
       toast.error("更新失敗");
     } else {
       toast.success("已放入櫃子，等待顧客取餐");
+      fetchOrders();
     }
   };
 
@@ -137,14 +141,14 @@ export default function DeliveryPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full">
-          <h2 className="text-2xl mb-6 text-center font-bold">外送員登入</h2>
+          <h2 className="text-2xl mb-6 text-center font-bold text-black">外送員登入</h2>
           <input
             type="text"
             value={deliveryName}
             onChange={(e) => setDeliveryName(e.target.value)}
             placeholder="請輸入您的姓名"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
-            onKeyPress={(e) => e.key === "Enter" && handleSetName()}
+            onKeyDown={(e) => e.key === "Enter" && handleSetName()}
           />
           <button
             onClick={handleSetName}
@@ -163,8 +167,8 @@ export default function DeliveryPage() {
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push("/")} // 修正點 2：使用 router.push 進行跳轉
-              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow"
+              onClick={() => router.push("/")}
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow text-black"
             >
               <Home className="w-5 h-5" />
             </button>
@@ -175,7 +179,7 @@ export default function DeliveryPage() {
           </div>
           <button
             onClick={fetchOrders}
-            className="px-4 py-2 bg-white rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95"
+            className="px-4 py-2 bg-white rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95 text-black"
           >
             重新整理
           </button>
@@ -189,7 +193,7 @@ export default function DeliveryPage() {
             </h2>
             <div className="space-y-4">
               {pendingOrders.length === 0 ? (
-                <div className="bg-white/50 backdrop-blur-sm border-2 border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500">
+                <div className="bg-white/50 backdrop-blur-sm border-2 border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500 text-black">
                   目前沒有待處理的請求
                 </div>
               ) : (
@@ -241,12 +245,22 @@ export default function DeliveryPage() {
   );
 }
 
+// 最終導出的組件加入 Suspense 保護
+export default function DeliveryPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-black">載入中...</div>}>
+      <DeliveryContent />
+    </Suspense>
+  );
+}
+
+// 保持 OrderCard 組件不變...
 function OrderCard({ order, action, showQR }: { order: Order; action?: React.ReactNode; showQR?: boolean }) {
   const [showQRCode, setShowQRCode] = useState(false);
   const qrData = JSON.stringify({ orderId: order.id, locker: order.lockerNumber });
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all">
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all text-black">
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-xl font-bold text-gray-800 mb-2">{order.studentName}</h3>
