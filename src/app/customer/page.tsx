@@ -18,7 +18,7 @@ interface Order {
   room: string;
   phone: string;
   items: OrderItem[];
-  status: "pending" | "accepted" | "in_locker" | "completed";
+  status: "pending" | "accepted" | "delivering" | "in_locker" | "picked_up" | "returned" | "completed";
   createdAt: string;
 }
 
@@ -43,7 +43,7 @@ export default function CustomerPage() {
     if (showHistory && phone) {
       loadMyOrders();
     }
-  }, [showHistory]);
+  }, [showHistory, phone]);
 
   const loadMyOrders = async () => {
     if (!phone) return;
@@ -61,6 +61,9 @@ export default function CustomerPage() {
       setMyOrders(data || []);
     }
   };
+
+  const activeOrders = myOrders.filter(order => !["returned", "completed"].includes(order.status));
+  const completedOrders = myOrders.filter(order => ["returned", "completed"].includes(order.status));
 
   const updateCount = (index: number, delta: number) => {
     setItems(prev => {
@@ -148,39 +151,85 @@ export default function CustomerPage() {
                 <p>尚無訂單紀錄</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {myOrders.map(order => (
-                  <button
-                    key={order.id}
-                    onClick={() => router.push(`/tracking?id=${order.id}`)}
-                    className="w-full bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors text-left border border-gray-100"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-bold text-gray-800">{new Date(order.createdAt).toLocaleDateString()}</p>
-                        <p className="text-sm text-gray-600">{order.dorm} {order.room}</p>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          order.status === "pending" ? "bg-orange-100 text-orange-700" :
-                          order.status === "accepted" ? "bg-blue-100 text-blue-700" :
-                          "bg-green-100 text-green-700"
-                        }`}
-                      >
-                        {order.status === "pending" ? "待接取" :
-                         order.status === "accepted" ? "進行中" : 
-                         order.status === "in_locker" ? "待取餐" : "已完成"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {order.items.map((item, idx) => (
-                        <span key={idx} className="text-xs bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-600">
-                          {item.name} × {item.count}
-                        </span>
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">目前進行中訂單</h3>
+                  {activeOrders.length === 0 ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 text-gray-500">目前沒有正在進行的訂單</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {activeOrders.map(order => (
+                        <button
+                          key={order.id}
+                          onClick={() => router.push(`/tracking?id=${order.id}`)}
+                          className="w-full bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors text-left border border-gray-100"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-bold text-gray-800">{new Date(order.createdAt).toLocaleDateString()}</p>
+                              <p className="text-sm text-gray-600">{order.dorm} {order.room}</p>
+                            </div>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                order.status === "pending" ? "bg-orange-100 text-orange-700" :
+                                order.status === "accepted" || order.status === "delivering" ? "bg-blue-100 text-blue-700" :
+                                "bg-green-100 text-green-700"
+                              }`}
+                            >
+                              {order.status === "pending" ? "待接取" :
+                               order.status === "accepted" || order.status === "delivering" ? "進行中" : 
+                               order.status === "in_locker" ? "待取餐" : 
+                               order.status === "picked_up" ? "享用中" : 
+                               order.status === "returned" ? "已歸還" : 
+                               "已完成"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {order.items.map((item, idx) => (
+                              <span key={idx} className="text-xs bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-600">
+                                {item.name} × {item.count}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
                       ))}
                     </div>
-                  </button>
-                ))}
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">過去完成訂單</h3>
+                  {completedOrders.length === 0 ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 text-gray-500">目前尚無完成訂單</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {completedOrders.map(order => (
+                        <button
+                          key={order.id}
+                          onClick={() => router.push(`/tracking?id=${order.id}`)}
+                          className="w-full bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition-colors text-left border border-gray-100"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-bold text-gray-800">{new Date(order.createdAt).toLocaleDateString()}</p>
+                              <p className="text-sm text-gray-600">{order.dorm} {order.room}</p>
+                            </div>
+                            <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              {order.status === "returned" ? "已歸還" : "已完成"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {order.items.map((item, idx) => (
+                              <span key={idx} className="text-xs bg-white px-2 py-1 rounded-full border border-gray-200 text-gray-600">
+                                {item.name} × {item.count}
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

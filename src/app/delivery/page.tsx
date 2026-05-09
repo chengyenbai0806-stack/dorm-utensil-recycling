@@ -102,7 +102,7 @@ function DeliveryContent() {
     const { error } = await supabase
       .from('orders')
       .update({
-        status: "accepted",
+        status: "delivering",
         deliveryPerson: deliveryName,
         lockerNumber: lockerNumber,
         acceptedAt: new Date().toISOString()
@@ -112,7 +112,7 @@ function DeliveryContent() {
     if (error) {
       toast.error("接單失敗");
     } else {
-      toast.success(`已接取訂單，分配櫃子：${lockerNumber}`);
+      toast.success(`已接取訂單，開始配送，分配櫃子：${lockerNumber}`);
       fetchOrders(); // 接單後立即更新清單
     }
   };
@@ -135,7 +135,7 @@ function DeliveryContent() {
   };
 
   const pendingOrders = orders.filter(o => o.status === "pending");
-  const myOrders = orders.filter(o => o.status === "accepted" && o.deliveryPerson === deliveryName);
+  const myOrders = orders.filter(o => (o.status === "accepted" || o.status === "delivering") && o.deliveryPerson === deliveryName);
 
   if (showNameInput) {
     return (
@@ -232,7 +232,7 @@ function DeliveryContent() {
                       className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-md transition-all flex items-center gap-2"
                     >
                       <Check className="w-4 h-4" />
-                      已放入櫃子
+                      已送達通知
                     </button>
                   }
                 />
