@@ -7,6 +7,9 @@ import { ArrowLeft, Clock, CheckCircle, Truck, User, Home, PackageCheck } from "
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
+// 強制此頁面為動態渲染，防止 Vercel 預渲染錯誤 (解決 image_92071a.png 的關鍵)
+export const dynamic = "force-dynamic";
+
 interface OrderItem {
   name: string;
   count: number;
@@ -27,11 +30,10 @@ interface Order {
   returnDeposit?: number;
 }
 
-// 拆分出的邏輯組件
 function TrackingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const orderId = searchParams.get("id");
+  const orderId = searchParams ? searchParams.get("id") : null;
   
   const [order, setOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -53,26 +55,31 @@ function TrackingContent() {
   }, [orderId]);
 
   useEffect(() => {
-    if (!orderId) {
-      router.push("/customer");
-      return;
+    // 確保只在瀏覽器端且 orderId 存在時執行
+    if (typeof window !== "undefined") {
+      if (!orderId) {
+        // 如果 URL 沒 ID，五秒後回首頁，避免開發時閃退
+        const timer = setTimeout(() => router.push("/customer"), 5000);
+        return () => clearTimeout(timer);
+      }
+      
+      loadOrder();
+
+      const channel = supabase
+        .channel(`track-${orderId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+          (payload) => {
+            setOrder(payload.new as Order);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
-    loadOrder();
-
-    const channel = supabase
-      .channel(`track-${orderId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
-        (payload) => {
-          setOrder(payload.new as Order);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [orderId, loadOrder, router]);
 
   const handlePayDeposit = async () => {
@@ -98,6 +105,7 @@ function TrackingContent() {
   };
 
   const handleReturnConfirm = async () => {
+    if (!orderId) return;
     setIsProcessing(true);
     const { error } = await supabase
       .from('orders')
@@ -116,10 +124,16 @@ function TrackingContent() {
     setIsProcessing(false);
   };
 
+  if (!orderId) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black p-4 text-center">
+      未提供訂單編號，請重新從訂單列表進入。
+    </div>
+  );
+
   if (!order) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
-      載入中...
+      載入訂單資料中...
     </div>
   );
 
@@ -237,12 +251,11 @@ function TrackingContent() {
   );
 }
 
-// 這是匯出的主入口，使用 Suspense 解決 Vercel Build Error
 export default function OrderTracking() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
-        載入系統中...
+        正在啟動追蹤系統...
       </div>
     }>
       <TrackingContent />
