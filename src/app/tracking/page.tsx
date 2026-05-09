@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { ArrowLeft, Clock, CheckCircle, Truck, User, Home, PackageCheck } from "lucide-react";
@@ -27,7 +27,8 @@ interface Order {
   returnDeposit?: number;
 }
 
-export default function OrderTracking() {
+// 拆分出的邏輯組件
+function TrackingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("id");
@@ -125,7 +126,6 @@ export default function OrderTracking() {
   return (
     <div className="min-h-screen bg-slate-50 text-black p-4 pb-10">
       <div className="max-w-2xl mx-auto">
-        {/* 頂部導覽 */}
         <div className="flex items-center gap-4 mb-6">
           <button
             onClick={() => router.push("/customer")}
@@ -136,7 +136,6 @@ export default function OrderTracking() {
           <h1 className="text-xl font-bold">訂單詳細追蹤</h1>
         </div>
 
-        {/* 核心狀態卡片 */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center mb-6">
           <div className="mb-6 flex justify-center">
             {order.status === "pending" && <Clock className="w-16 h-16 text-orange-400 animate-pulse" />}
@@ -170,7 +169,6 @@ export default function OrderTracking() {
              />
           </div>
 
-          {/* 交互區域 */}
           <div className="space-y-4">
             {order.status === "in_locker" && (
               <div className="animate-in fade-in slide-in-from-bottom-4">
@@ -202,7 +200,6 @@ export default function OrderTracking() {
               </div>
             )}
 
-            {/* 歸還後的返回按鈕 */}
             {order.status === "returned" && (
               <div className="animate-in fade-in zoom-in duration-500">
                 <p className="text-green-600 font-medium mb-4">感謝您支持環境永續，押金已退還！</p>
@@ -218,7 +215,6 @@ export default function OrderTracking() {
           </div>
         </div>
 
-        {/* 訂單詳情 */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <h3 className="font-bold mb-4 text-gray-800">訂單內容</h3>
           <div className="space-y-3">
@@ -238,5 +234,18 @@ export default function OrderTracking() {
         </div>
       </div>
     </div>
+  );
+}
+
+// 這是匯出的主入口，使用 Suspense 解決 Vercel Build Error
+export default function OrderTracking() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
+        載入系統中...
+      </div>
+    }>
+      <TrackingContent />
+    </Suspense>
   );
 }
