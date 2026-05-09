@@ -22,7 +22,12 @@
         "name": "next"
       }
     ],
-    "strictNullChecks": true
+   "strictNullChecks": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": [
     "next-env.d.ts",
@@ -31,7 +36,7 @@
     "**/*.mts",
     "**/*.ts",
     "**/*.tsx"
-  ],
+, "src/app/routes.tsx.bak"  ],
   "exclude": [
     "node_modules"
   ]
