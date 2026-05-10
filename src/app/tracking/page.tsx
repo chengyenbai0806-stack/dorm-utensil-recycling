@@ -7,7 +7,6 @@ import { ArrowLeft, Clock, CheckCircle, Truck, User, Home, PackageCheck } from "
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
-// 強制此頁面為動態渲染
 export const dynamic = "force-dynamic";
 
 interface OrderItem {
@@ -38,8 +37,8 @@ function TrackingContent() {
   const [order, setOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // ✅ 固定網址設定：確保所有 QR Code 掃出來都一樣
-  const FIXED_QR_URL = "https://save-food-app-homework-train.vercel.app/";
+  // ✅ 這裡是給外送員掃描的固定網址
+  const qrValue = orderId ? `https://save-food-app-homework-train.vercel.app/tracking?id=${orderId}` : "https://save-food-app-homework-train.vercel.app/";
 
   const loadOrder = useCallback(async () => {
     if (!orderId) return;
@@ -125,8 +124,8 @@ function TrackingContent() {
     }
   };
 
-  if (!orderId) return <div className="p-10 text-center">未提供訂單編號</div>;
-  if (!order) return <div className="p-10 text-center">載入中...</div>;
+  if (!orderId) return <div className="p-10 text-center text-black">未提供訂單編號</div>;
+  if (!order) return <div className="p-10 text-center text-black">載入中...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 text-black p-4 pb-10 font-sans">
@@ -171,16 +170,14 @@ function TrackingContent() {
             />
           </div>
 
-          {/* 下方為 QR Code 顯示區塊 */}
           <div className="space-y-4">
-            
-            {/* ✅ 綠色階段：取餐 QR Code */}
+            {/* ✅ 【接單/取餐畫面】 - 這裡絕對保留 QRCode，讓外送員掃描 */}
             {order.status === "in_locker" && (
               <div className="animate-in fade-in zoom-in duration-500">
                 <div className="bg-gray-50 p-6 rounded-2xl mb-4 flex flex-col items-center border border-gray-100">
-                  <p className="text-sm text-gray-500 mb-3">請向管理員出示此碼取餐</p>
-                  <div className="bg-white p-3 rounded-xl shadow-md">
-                    <QRCodeSVG value={FIXED_QR_URL} size={160} />
+                  <p className="text-sm text-gray-500 mb-3 font-medium">請向外送員/管理員出示此碼接單</p>
+                  <div className="bg-white p-3 rounded-xl shadow-md border border-gray-100">
+                    <QRCodeSVG value={qrValue} size={180} />
                   </div>
                 </div>
                 <button
@@ -188,34 +185,33 @@ function TrackingContent() {
                   disabled={isProcessing}
                   className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold shadow-lg hover:bg-green-700 transition-all"
                 >
-                  {isProcessing ? "處理中..." : "支付押金 NT$100 並取餐"}
+                  {isProcessing ? "處理中..." : "支付押金 NT$100 並完成取餐"}
                 </button>
               </div>
             )}
 
-            {/* ✅ 紫色階段：歸還 QR Code (現在也改為固定網址了) */}
+            {/* ✅ 【歸還畫面】 - 這裡徹底刪除 QRCode，只需點擊按鈕 */}
             {order.status === "picked_up" && (
               <div className="animate-in fade-in zoom-in duration-500">
-                <div className="bg-purple-50 border-2 border-dashed border-purple-100 p-6 rounded-2xl mb-4 flex flex-col items-center">
-                  <p className="text-sm text-purple-600 font-medium mb-3">歸還時請出示此碼</p>
-                  <div className="bg-white p-3 rounded-xl shadow-md">
-                    <QRCodeSVG value={FIXED_QR_URL} size={160} />
-                  </div>
+                <div className="bg-purple-50 p-8 rounded-2xl mb-4 text-center border border-purple-100">
+                  <User className="w-12 h-12 text-purple-400 mx-auto mb-3" />
+                  <p className="text-purple-700 font-bold">餐點使用中</p>
+                  <p className="text-purple-500 text-sm">請於用餐完畢後將餐具歸還至指定點</p>
                 </div>
                 <button
                   onClick={handleReturnConfirm}
                   disabled={isProcessing}
-                  className="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold shadow-lg hover:bg-purple-700 transition-all"
+                  className="w-full py-6 bg-purple-600 text-white rounded-2xl font-bold shadow-lg hover:bg-purple-700 transition-all text-lg"
                 >
-                  {isProcessing ? "處理中..." : "我已歸還餐具 (退回押金)"}
+                  {isProcessing ? "處理中..." : "我已完成歸還 (退回押金)"}
                 </button>
               </div>
             )}
 
-            {/* ✅ 完成階段 */}
+            {/* ✅ 【完成畫面】 */}
             {order.status === "returned" && (
               <div className="animate-in fade-in zoom-in duration-500">
-                <div className="bg-green-50 p-6 rounded-2xl mb-6">
+                <div className="bg-green-50 p-6 rounded-2xl mb-6 border border-green-100">
                    <p className="text-green-700 font-bold mb-1">任務完成！</p>
                    <p className="text-green-600 text-sm text-balance">感謝您支持循環餐具，押金已原路退回。</p>
                 </div>
@@ -236,7 +232,7 @@ function TrackingContent() {
 
 export default function OrderTracking() {
   return (
-    <Suspense fallback={<div className="p-10 text-center">系統載入中...</div>}>
+    <Suspense fallback={<div className="p-10 text-center text-black">系統載入中...</div>}>
       <TrackingContent />
     </Suspense>
   );

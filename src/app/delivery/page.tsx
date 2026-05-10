@@ -5,14 +5,9 @@ export const dynamic = "force-dynamic";
 import { supabase } from "@/lib/supabase";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { Home, MapPin, Phone, Package, Check, QrCode } from "lucide-react";
+import { Home, MapPin, Phone, Package, Check } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
-import dynamicLoader from 'next/dynamic';
-
-const QRCodeSVG = dynamicLoader(
-  () => import('qrcode.react').then((mod) => mod.QRCodeSVG),
-  { ssr: false }
-);
 
 interface OrderItem {
   name: string;
@@ -101,7 +96,7 @@ function DeliveryContent() {
 
   const acceptOrder = async (orderId: string) => {
     const usedLockers = orders
-      .filter(o => (o.status === "accepted" || o.status === "delivering") && o.lockerNumber)
+      .filter(o => (o.status === "accepted" || o.status === "delivering" || o.status === "in_locker") && o.lockerNumber)
       .map(o => o.lockerNumber);
     
     let lockerNumber = 1;
@@ -146,15 +141,16 @@ function DeliveryContent() {
   };
 
   const pendingOrders = orders.filter(o => o.status === "pending");
+  // 這裡確保即使狀態變成 picked_up 或 returned，只要是外送員接的單，依然顯示在列表中
   const myOrders = orders.filter(o => 
-    ["accepted", "delivering", "in_locker"].includes(o.status) && 
+    ["accepted", "delivering", "in_locker", "picked_up", "returned"].includes(o.status) && 
     o.deliveryPerson === deliveryName
   );
 
   if (showNameInput) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-black">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4 text-black">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full">
           <h2 className="text-2xl mb-6 text-center font-bold">外送員登入</h2>
           <input
             type="text"
@@ -232,16 +228,16 @@ function DeliveryContent() {
           <section>
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-600">
               <Package className="w-6 h-6" />
-              我的進行中任務 ({myOrders.length})
+              我的配送任務 ({myOrders.length})
             </h2>
             <div className="space-y-4">
               {myOrders.map(order => (
                 <OrderCard
                   key={order.id}
                   order={order}
-                  showQR={true}
+                  showQR={true} // 只要是我的任務，一律允許展開 QRCode
                   action={
-                    order.status !== "in_locker" && (
+                    order.status === "delivering" && (
                       <button
                         onClick={() => deliverToLocker(order.id)}
                         className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-md transition-all flex items-center gap-2"
@@ -270,15 +266,17 @@ export default function DeliveryPage() {
 }
 
 function OrderCard({ order, action, showQR }: { order: Order; action?: React.ReactNode; showQR?: boolean }) {
-  const [showQRCode, setShowQRCode] = useState(false);
-  
-  // 替換為固定網址
-  const FIXED_QR_URL = "https://save-food-app-homework-train.vercel.app/";
+  const qrValue = order.id ? `https://save-food-app-homework-train.vercel.app/tracking?id=${order.id}` : "https://save-food-app-homework-train.vercel.app/";
 
-  const statusLabel = {
+  // 完整標籤對照
+  const statusLabel: Record<string, string> = {
     pending: "新訂單",
+    accepted: "已接單",
     delivering: "配送中",
-    in_locker: "待取貨"
+    in_locker: "待取貨",
+    picked_up: "使用中",
+    returned: "已歸還",
+    completed: "已完成"
   };
 
   return (
@@ -300,27 +298,22 @@ function OrderCard({ order, action, showQR }: { order: Order; action?: React.Rea
         <div className="flex flex-col items-end gap-2">
           <span className={`px-4 py-1 rounded-full text-xs font-bold ${
             order.status === 'pending' ? 'bg-orange-100 text-orange-600' : 
-            order.status === 'in_locker' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+            order.status === 'in_locker' ? 'bg-blue-100 text-blue-600' : 
+            'bg-green-100 text-green-600'
           }`}>
-            {statusLabel[order.status as keyof typeof statusLabel] || "處理中"}
+            {statusLabel[order.status] || "處理中"}
           </span>
           {showQR && (
-             <button onClick={() => setShowQRCode(!showQRCode)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-blue-500 transition-colors">
-               <QrCode className="w-6 h-6" />
-             </button>
+            <div className="my-4 p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 flex flex-col items-center">
+              <p className="font-bold text-blue-700 mb-2">櫃子：{order.lockerNumber || "未分配"}</p>
+              <div className="bg-white p-3 rounded-xl shadow-inner">
+                <QRCodeSVG value={qrValue} size={150} />
+              </div>
+              <p className="text-[10px] text-blue-400 mt-2 break-all">{qrValue}</p>
+            </div>
           )}
         </div>
       </div>
-
-      {showQRCode && (
-        <div className="my-4 p-4 bg-blue-50 rounded-2xl border-2 border-blue-100 flex flex-col items-center animate-in fade-in zoom-in duration-300">
-          <p className="font-bold text-blue-700 mb-2">櫃子：{order.lockerNumber}</p>
-          <div className="bg-white p-3 rounded-xl shadow-inner">
-            <QRCodeSVG value={FIXED_QR_URL} size={150} />
-          </div>
-          <p className="text-[10px] text-blue-400 mt-2 break-all">{FIXED_QR_URL}</p>
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2 mb-6">
         {order.items?.map((item, i) => (
