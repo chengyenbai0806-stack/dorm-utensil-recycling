@@ -266,7 +266,7 @@ export default function DeliveryPage() {
 }
 
 function OrderCard({ order, action, showQR }: { order: Order; action?: React.ReactNode; showQR?: boolean }) {
-  const qrValue = order.id ? `https://save-food-app-homework-train.vercel.app/tracking?id=${order.id}` : "https://save-food-app-homework-train.vercel.app/";
+  const qrValue = "https://save-food-app-homework-train.vercel.app/";
 
   // 完整標籤對照
   const statusLabel: Record<string, string> = {

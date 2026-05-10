@@ -38,7 +38,7 @@ function TrackingContent() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // ✅ 這裡是給外送員掃描的固定網址
-  const qrValue = orderId ? `https://save-food-app-homework-train.vercel.app/tracking?id=${orderId}` : "https://save-food-app-homework-train.vercel.app/";
+  const qrValue = "https://save-food-app-homework-train.vercel.app/";
 
   const loadOrder = useCallback(async () => {
     if (!orderId) return;
