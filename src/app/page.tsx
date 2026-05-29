@@ -1,48 +1,64 @@
-"use client"; 
+"use client";
 
-import { useRouter } from "next/navigation";
-import { UtensilsCrossed, Truck } from "lucide-react";
+import React from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function Home() {
+export default function SystemTwoHomePage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 text-gray-800">宿舍餐具回收平台</h1>
-          <p className="text-gray-600">選擇您的角色開始使用</p>
+    <div style={{ 
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+      minHeight: '100vh', backgroundColor: '#0f172a', color: '#ffffff', fontFamily: 'sans-serif', padding: '20px' 
+    }}>
+      <div style={{ 
+        backgroundColor: '#1e293b', padding: '40px', borderRadius: '16px', textAlign: 'center', 
+        maxWidth: '450px', width: '100%', border: '2px solid #334155', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)' 
+      }}>
+        
+        <h1 style={{ fontSize: '26px', fontWeight: 'bold', marginBottom: '10px', color: '#38bdf8' }}>
+          🤖 智慧置物櫃機台端 (分流首頁)
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '35px' }}>
+          前身外賣系統已完美轉化為惜食置物櫃雙端介面
+        </p>
+
+        {/* 核心賣方按鈕：精準導向 /delivery (借用原本外送端路由) */}
+        <button 
+          onClick={() => router.push('/delivery')} 
+          style={{ 
+            width: '100%', padding: '18px', backgroundColor: '#22c55e', color: 'white', 
+            border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', 
+            cursor: 'pointer', marginBottom: '16px', transition: 'all 0.2s',
+            boxShadow: '0 4px 12px 0 rgba(34, 197, 94, 0.3)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#16a34a'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#22c55e'}
+        >
+          👨‍🍳 進入【賣方進櫃介面】
+        </button>
+
+        {/* 核心買方按鈕：導向 /customer */}
+        <button 
+          onClick={() => router.push('/customer')} 
+          style={{ 
+            width: '100%', padding: '18px', backgroundColor: '#3b82f6', color: 'white', 
+            border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', 
+            cursor: 'pointer', transition: 'all 0.2s',
+            boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+        >
+          🛒 進入【顧客取貨介面】
+        </button>
+
+        <div style={{ marginTop: '30px', textAlign: 'left', backgroundColor: '#0f172a', padding: '15px', borderRadius: '8px', fontSize: '12px', color: '#64748b', lineHeight: '1.6' }}>
+          💡 <strong>Demo 演示提醒：</strong><br/>
+          • 點擊<strong>綠色按鈕</strong>前往 `/delivery` 處理賣家放貨。<br/>
+          • 點擊<strong>藍色按鈕</strong>前往 `/customer` 處理買家取餐。
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* 顧客按鈕 */}
-          <button
-            onClick={() => router.push("/customer")} // 修改點：對應 /customer 資料夾
-            className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
-          >
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                <UtensilsCrossed className="w-10 h-10 text-blue-600" />
-              </div>
-              <h2 className="text-2xl font-semibold text-gray-800">我是顧客</h2>
-              <p className="text-gray-600 text-center">預約餐具回收服務</p>
-            </div>
-          </button>
-
-          {/* 外送員按鈕 */}
-          <button
-            onClick={() => router.push("/delivery")} // 修改點：對應 /delivery 資料夾
-            className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
-          >
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                <Truck className="w-10 h-10 text-green-600" />
-              </div>
-              <h2 className="text-2xl font-semibold text-gray-800">我是外送員</h2>
-              <p className="text-gray-600 text-center">查看並接取回收訂單</p>
-            </div>
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -1,239 +1,158 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Clock, CheckCircle, Truck, User, Home, PackageCheck } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
-import { toast } from "sonner";
+import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase'; // 對齊你的連線設定檔
+import { QRCodeSVG } from 'qrcode.react';
 
-export const dynamic = "force-dynamic";
-
-interface OrderItem {
-  name: string;
-  count: number;
+interface LockerData {
+  id: number;
+  title: string;
+  locker_no: string;
+  status: string;
+  is_ordered: boolean;
 }
 
-interface Order {
-  id: string;
-  studentName: string;
-  dorm: string;
-  room: string;
-  phone: string;
-  items: OrderItem[];
-  status: "pending" | "accepted" | "delivering" | "in_locker" | "picked_up" | "returned" | "completed";
-  createdAt: string;
-  deliveryPerson?: string;
-  lockerNumber?: number;
-  deposit?: number;
-  returnDeposit?: number;
-}
-
-function TrackingContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const orderId = searchParams ? searchParams.get("id") : null;
+export default function TrackingContent() {
+  const [lockerData, setLockerData] = useState<LockerData | null>(null);
   
-  const [order, setOrder] = useState<Order | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // 核心控制狀態（Step 流程分流）：
+  // 0: 機台首頁(等待系統一發布) 
+  // 1: 賣方端(系統一發布後，系統二跳出賣方固定二維碼 + 確認按鈕)
+  // 2: 買方端(顧客在系統一購買後，系統二跳出顧客固定二維碼 + 取貨按鈕)
+  // 3: 已完成取餐頁面(按下取貨後跳轉至此 + 確認取餐按鈕)
+  const [step, setStep] = useState<number>(0);
 
-  // ✅ 這裡是給外送員掃描的固定網址
-  const qrValue = "https://save-food-app-homework-train.vercel.app/";
+  const myLockerNo = "A-01"; // 固定負責 A-01 櫃位
+  
+  // 依據你的技術需求：二維碼內容保持完全固定，網址直接死綁櫃號
+  const fixedQrValue = `https://save-food-app-homework-train.vercel.app/verify?locker=${myLockerNo}`;
 
-  const loadOrder = useCallback(async () => {
-    if (!orderId) return;
+  // 核心動態讀取：系統二持續監聽後端資料庫的訊號變化
+  const loadLockerStatus = useCallback(async () => {
+    // 只有在首頁(0)或等待顧客購買(1之後)才自動監聽，避免打擾使用者正在操作的按鈕畫面
+    if (step !== 0 && step !== 1) return;
+
     const { data, error } = await supabase
-      .from('orders')
+      .from('food_lockers') // 鎖定新隔離表
       .select('*')
-      .eq('id', orderId)
-      .single();
+      .eq('locker_no', myLockerNo)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      console.error("載入失敗:", error);
-      toast.error("找不到該訂單");
-    } else {
-      setOrder(data);
+    if (error || !data) {
+      return;
     }
-  }, [orderId]);
 
+    setLockerData(data);
+
+    // 狀態核心計算與分流
+    if (data.status === 'PENDING' && step === 0) {
+      // 功能 A：當系統一發布，系統二立刻讀取並秀出賣方二維碼畫面 (Step 1)
+      setStep(1);
+    } else if (data.status === 'ACTIVE' && data.is_ordered === true && step === 1) {
+      // 功能 B：當顧客在系統一選擇我發布的物品購買後，系統二顧客端出現二維碼 (Step 2)
+      setStep(2);
+    }
+  }, [step]);
+
+  // 每 3 秒自動同步一次後端訊號
   useEffect(() => {
-    if (typeof window === "undefined" || !orderId) return;
+    loadLockerStatus();
+    const interval = setInterval(loadLockerStatus, 3000);
+    return () => clearInterval(interval);
+  }, [loadLockerStatus]);
 
-    loadOrder();
+  // 更新後端狀態並進行畫面跳轉的控制函數
+  const handleAction = async (nextStep: number, updateFields?: object) => {
+    if (lockerData && updateFields) {
+      // 同步變更後端欄位標籤，防止流程衝突
+      await supabase
+        .from('food_lockers')
+        .update(updateFields)
+        .eq('id', lockerData.id);
+    }
 
-    const channel = supabase
-      .channel(`track-${orderId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'orders', 
-          filter: `id=eq.${orderId}` 
-        },
-        (payload) => {
-          setOrder(payload.new as Order);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [orderId, loadOrder]);
-
-  const handlePayDeposit = async () => {
-    if (!orderId || isProcessing) return;
-    setIsProcessing(true);
+    if (nextStep === 0) {
+      // 返回首頁時，清除當前暫存資料
+      setLockerData(null);
+    }
     
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: "picked_up",
-        deposit: 100,
-        pickedUpAt: new Date().toISOString(),
-      })
-      .eq('id', orderId);
-
-    if (error) {
-      toast.error("支付失敗");
-      setIsProcessing(false);
-    } else {
-      toast.success("押金支付成功，請取餐！");
-      setIsProcessing(false);
-    }
+    setStep(nextStep); // 執行跳轉
   };
-
-  const handleReturnConfirm = async () => {
-    if (!orderId || isProcessing) return;
-    setIsProcessing(true);
-
-    const { error } = await supabase
-      .from('orders')
-      .update({ 
-        status: "returned",
-        returnDeposit: 100 
-      })
-      .eq('id', orderId);
-
-    if (!error) {
-      toast.success("歸還成功");
-    } else {
-      toast.error("更新失敗");
-      setIsProcessing(false);
-    }
-  };
-
-  if (!orderId) return <div className="p-10 text-center text-black">未提供訂單編號</div>;
-  if (!order) return <div className="p-10 text-center text-black">載入中...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-black p-4 pb-10 font-sans">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => router.push("/customer")} className="p-2 bg-white rounded-full shadow-sm">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <h1 className="text-xl font-bold text-gray-800">訂單追蹤</h1>
+    <div style={{ 
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+      minHeight: '100vh', backgroundColor: '#0f172a', color: '#ffffff', fontFamily: 'sans-serif', padding: '20px' 
+    }}>
+      
+      {/* ================= STEP 0: 系統二機台首頁 (等待訊號) ================= */}
+      {step === 0 && (
+        <div style={{ border: '2px dashed #475569', padding: '50px', borderRadius: '16px', textAlign: 'center', color: '#94a3b8' }}>
+          <p style={{ fontSize: '22px', fontWeight: 'bold' }}>⏳ 智慧置物櫃 ({myLockerNo}) 待命首頁</p>
+          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '10px' }}>正在即時監聽後端... 請至系統一發布物品</p>
         </div>
+      )}
 
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center mb-6">
-          <div className="mb-6 flex justify-center">
-            {order.status === "pending" && <Clock className="w-16 h-16 text-orange-400 animate-pulse" />}
-            {order.status === "delivering" && <Truck className="w-16 h-16 text-blue-500 animate-bounce" />}
-            {order.status === "in_locker" && <PackageCheck className="w-16 h-16 text-green-500" />}
-            {order.status === "picked_up" && <User className="w-16 h-16 text-yellow-500" />}
-            {order.status === "returned" && <CheckCircle className="w-16 h-16 text-green-600" />}
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2 text-gray-800">
-            {order.status === "pending" && "正在尋找外送員"}
-            {order.status === "delivering" && "外送員配送中"}
-            {order.status === "in_locker" && `請至 ${order.lockerNumber} 號櫃取餐`}
-            {order.status === "picked_up" && "餐點使用中"}
-            {order.status === "returned" && "歸還流程已完成"}
-          </h2>
+      {/* ================= STEP 1: 賣方端 (系統一發布後，秀出二維碼與確認按鈕) ================= */}
+      {step === 1 && lockerData && (
+        <div style={{ backgroundColor: '#1e293b', border: '4px solid #22c55e', padding: '30px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
+          <h2 style={{ color: '#22c55e', fontSize: '22px', margin: '0 0 10px 0' }}>👨‍🍳 賣方進櫃畫面</h2>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '20px' }}>已偵測到系統一最新發布商品：<strong>{lockerData.title}</strong></p>
           
-          <p className="text-gray-400 text-[10px] mb-6 uppercase tracking-widest">
-            Order ID: {order.id.split("-")[0]}
-          </p>
-
-          <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-8">
-            <div 
-              className="h-full bg-blue-500 transition-all duration-700" 
-              style={{ width: 
-                order.status === "pending" ? "10%" : 
-                order.status === "delivering" ? "40%" : 
-                order.status === "in_locker" ? "70%" : 
-                order.status === "picked_up" ? "90%" : "100%" 
-              }} 
-            />
+          {/* 固定二維碼 */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '15px', backgroundColor: '#ffffff', borderRadius: '12px', margin: '15px 0' }}>
+            <QRCodeSVG value={fixedQrValue} size={180} />
           </div>
-
-          <div className="space-y-4">
-            {/* ✅ 【接單/取餐畫面】 - 這裡絕對保留 QRCode，讓外送員掃描 */}
-            {order.status === "in_locker" && (
-              <div className="animate-in fade-in zoom-in duration-500">
-                <div className="bg-gray-50 p-6 rounded-2xl mb-4 flex flex-col items-center border border-gray-100">
-                  <p className="text-sm text-gray-500 mb-3 font-medium">請向外送員/管理員出示此碼接單</p>
-                  <div className="bg-white p-3 rounded-xl shadow-md border border-gray-100">
-                    <QRCodeSVG value={qrValue} size={180} />
-                  </div>
-                </div>
-                <button
-                  onClick={handlePayDeposit}
-                  disabled={isProcessing}
-                  className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold shadow-lg hover:bg-green-700 transition-all"
-                >
-                  {isProcessing ? "處理中..." : "支付押金 NT$100 並完成取餐"}
-                </button>
-              </div>
-            )}
-
-            {/* ✅ 【歸還畫面】 - 這裡徹底刪除 QRCode，只需點擊按鈕 */}
-            {order.status === "picked_up" && (
-              <div className="animate-in fade-in zoom-in duration-500">
-                <div className="bg-purple-50 p-8 rounded-2xl mb-4 text-center border border-purple-100">
-                  <User className="w-12 h-12 text-purple-400 mx-auto mb-3" />
-                  <p className="text-purple-700 font-bold">餐點使用中</p>
-                  <p className="text-purple-500 text-sm">請於用餐完畢後將餐具歸還至指定點</p>
-                </div>
-                <button
-                  onClick={handleReturnConfirm}
-                  disabled={isProcessing}
-                  className="w-full py-6 bg-purple-600 text-white rounded-2xl font-bold shadow-lg hover:bg-purple-700 transition-all text-lg"
-                >
-                  {isProcessing ? "處理中..." : "我已完成歸還 (退回押金)"}
-                </button>
-              </div>
-            )}
-
-            {/* ✅ 【完成畫面】 */}
-            {order.status === "returned" && (
-              <div className="animate-in fade-in zoom-in duration-500">
-                <div className="bg-green-50 p-6 rounded-2xl mb-6 border border-green-100">
-                   <p className="text-green-700 font-bold mb-1">任務完成！</p>
-                   <p className="text-green-600 text-sm text-balance">感謝您支持循環餐具，押金已原路退回。</p>
-                </div>
-                <button
-                  onClick={() => router.push("/customer")}
-                  className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black transition-all"
-                >
-                  返回首頁
-                </button>
-              </div>
-            )}
-          </div>
+          
+          {/* 按下確認按鈕後：將後端改為 ACTIVE 狀態（代表貨物已在櫃內），並返回首頁 */}
+          <button 
+            onClick={() => handleAction(0, { status: 'ACTIVE' })}
+            style={{ width: '100%', padding: '12px', backgroundColor: '#22c55e', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px', marginTop: '15px' }}
+          >
+            確認按鈕 (返回首頁)
+          </button>
         </div>
-      </div>
-    </div>
-  );
-}
+      )}
 
-export default function OrderTracking() {
-  return (
-    <Suspense fallback={<div className="p-10 text-center text-black">系統載入中...</div>}>
-      <TrackingContent />
-    </Suspense>
+      {/* ================= STEP 2: 買方顧客端 (顧客在系統一購買後，出現固定二維碼與取貨按鈕) ================= */}
+      {step === 2 && lockerData && (
+        <div style={{ backgroundColor: '#1e293b', border: '4px solid #3b82f6', padding: '30px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
+          <h2 style={{ color: '#3b82f6', fontSize: '22px', margin: '0 0 10px 0' }}>🛒 買方顧客端</h2>
+          <p style={{ color: '#cbd5e1', fontSize: '15px' }}>偵測到顧客已在系統一選擇此物品購買</p>
+          
+          {/* 固定二維碼（保持固定不動） */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '15px', backgroundColor: '#ffffff', borderRadius: '12px', margin: '20px 0' }}>
+            <QRCodeSVG value={fixedQrValue} size={180} />
+          </div>
+          
+          {/* 當按下畫面上取貨按鈕時：會跳到下一頁的已完成取餐 (Step 3) */}
+          <button 
+            onClick={() => handleAction(3)} 
+            style={{ width: '100%', padding: '12px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}
+          >
+            取貨按鈕
+          </button>
+        </div>
+      )}
+
+      {/* ================= STEP 3: 已完成取餐頁面 ================= */}
+      {step === 3 && (
+        <div style={{ backgroundColor: '#1e293b', border: '4px solid #eab308', padding: '40px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
+          <h2 style={{ color: '#eab308', fontSize: '26px', margin: '0 0 15px 0' }}>🎉 已完成取餐</h2>
+          <p style={{ color: '#94a3b8', fontSize: '15px', marginBottom: '30px' }}>實體櫃門已成功解鎖，請拿取您的物品。</p>
+          
+          {/* 按下確認取餐後：回到首頁 (Step 0) 並且將後端洗成 COMPLETED */}
+          <button 
+            onClick={() => handleAction(0, { status: 'COMPLETED' })} 
+            style={{ width: '100%', padding: '12px', backgroundColor: '#eab308', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}
+          >
+            確認取餐 (回到首頁)
+          </button>
+        </div>
+      )}
+
+    </div>
   );
 }
